@@ -1,0 +1,16 @@
+{
+  "name": "Emergency Mesh App",
+  "short_name": "SOS Mesh",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#E63946",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3799/3799981.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
