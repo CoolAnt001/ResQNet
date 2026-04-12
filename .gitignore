@@ -1,0 +1,25 @@
+# ResQNet Tactical Master GitIgnore
+# -------------------------------
+
+# Local Infrastructure (DO NOT IGNORE server.py)
+cloudflared.exe
+*.db
+*.log
+cloud_log.txt
+tunnel.log
+
+# Evidence Storage (Stay Local/Private)
+intel/
+
+# Environment Keys (CRITICAL - DO NOT UPLOAD)
+.env
+.env.local
+env.js
+config.js
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/
