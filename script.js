@@ -1,4 +1,4 @@
-// IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
+ // IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
 // THE CONFIG BELOW NOW PULLS FROM A GLOBAL 'ENV' OBJECT (defined in env.js)
 const firebaseConfig = {
     apiKey: typeof ENV !== 'undefined' ? ENV.FIREBASE_API_KEY : "REDACTED",
@@ -492,7 +492,14 @@ let activeMarker = null;
 
 // --- Register this device as a live node ---
 function registerNode() {
-    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() }).catch(() => { });
+    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() })
+        .then(() => {
+            // Heartbeat successful
+        })
+        .catch((err) => {
+            addLog(`Identity Sync Failed: ${err.message}`, "system");
+            console.error("Firebase Heartbeat Error:", err);
+        });
 }
 registerNode();
 addLog("Connected to cloud tactical network.", "system");
@@ -640,4 +647,3 @@ ackBtn.addEventListener('click', () => {
     document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
 });
-
