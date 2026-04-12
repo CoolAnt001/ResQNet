@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: [\"main\"] # Change this if your main branch is named differently
 
 permissions:
   contents: read
@@ -21,7 +21,9 @@ jobs:
 
       - name: Inject Environment Variables
         run: |
+          mkdir -p web_mesh
           echo "${{ secrets.ENV_JS_CONTENT }}" > web_mesh/env.js
+        # This creates the directory if it doesn't exist, then creates env.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -29,7 +31,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './web_mesh'
+          path: './web_mesh' # Only host the web_mesh folder
 
       - name: Deploy to GitHub Pages
         id: deployment
