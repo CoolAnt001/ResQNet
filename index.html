@@ -98,6 +98,12 @@
                 style="width: 100%; max-width: 400px; height: 180px; border-radius: 8px; margin-bottom: 15px; border: 2px solid white; display: none; z-index: 1000;">
             </div>
 
+            <!-- Video Intel Display -->
+            <div id="live-stream-container" style="display: none; width: 100%; max-width: 400px; margin-bottom: 15px;">
+                <video id="incoming-video" controls autoplay muted playsinline style="width: 100%; border-radius: 8px; border: 2px solid #ff4d4d;"></video>
+                <div style="background: rgba(255,0,0,0.6); font-size: 0.7rem; font-weight: 800; padding: 4px; color: white; margin-top: -4px; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">CAPTURED INTEL FEED</div>
+            </div>
+
             <p class="alert-details" id="incoming-details">NODE ID: UNKNOWN<br>LOC: AWAITING GPS FIX</p>
             <button class="acknowledge-btn" id="acknowledge-btn">ACKNOWLEDGE & ROUTE</button>
         </div>

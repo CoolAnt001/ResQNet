@@ -1,6 +1,6 @@
 {
-  "name": "Emergency Mesh App",
-  "short_name": "SOS Mesh",
+  "name": "ResQNet Tactical Bridge",
+  "short_name": "ResQNet",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#050505",

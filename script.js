@@ -544,8 +544,29 @@ function handleSOSData(data) {
     }
 
     // NEW VALID ALERT DETECTED
+    incomingOverlay.classList.remove('hidden');
     processedAlerts.add(alertSignature);
     addLog(`INCOMING PRIORITY PACKET: [${data.scenario}] from ${data.sender}`, 'alert');
+
+    // --- Intel Discovery (Local Relay) ---
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    fetch(`${localHost}/list_intel?node_id=${data.sender}`)
+        .then(res => res.json())
+        .then(intel => {
+            if (intel.files && intel.files.length > 0) {
+                const latestVideo = intel.files[0];
+                const videoElement = document.getElementById('incoming-video');
+                const videoContainer = document.getElementById('live-stream-container');
+                videoElement.src = `${localHost}/intel/${latestVideo}`;
+                videoContainer.style.display = 'block';
+                addLog(`[SYSTEM] Video evidence found for ${data.sender}. Loading...`, "node");
+            } else {
+                document.getElementById('live-stream-container').style.display = 'none';
+            }
+        }).catch(err => {
+            console.warn("Could not fetch intel from local relay:", err);
+            document.getElementById('live-stream-container').style.display = 'none';
+        });
 
     let locString = "NO GPS FIX";
     let mapLink = "#";
@@ -614,6 +635,9 @@ cloudDB.collection('sos_logs')
 
 ackBtn.addEventListener('click', () => {
     incomingOverlay.classList.add('hidden');
+    document.getElementById('live-stream-container').style.display = 'none';
+    document.getElementById('incoming-video').pause();
+    document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
 });
 
