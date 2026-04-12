@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sos-mesh-v18';
+const CACHE_NAME = 'sos-mesh-v20';
 const ASSETS = [
   './',
   './index.html',
