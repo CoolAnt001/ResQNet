@@ -1,4 +1,8 @@
- // IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
+window.onerror = function (msg, url, line) {
+    alert("CRITICAL ERROR: " + msg + " (Line " + line + ")");
+};
+
+// IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
 // THE CONFIG BELOW NOW PULLS FROM A GLOBAL 'ENV' OBJECT (defined in env.js)
 const firebaseConfig = {
     apiKey: typeof ENV !== 'undefined' ? ENV.FIREBASE_API_KEY : "REDACTED",
@@ -8,9 +12,13 @@ const firebaseConfig = {
     messagingSenderId: typeof ENV !== 'undefined' ? ENV.FIREBASE_MESSAGING_SENDER_ID : "REDACTED",
     appId: typeof ENV !== 'undefined' ? ENV.FIREBASE_APP_ID : "REDACTED"
 };
-firebase.initializeApp(firebaseConfig);
-const cloudDB = firebase.firestore();
-const cloudStorage = firebase.storage();
+if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    window.cloudDB = firebase.firestore();
+    window.cloudStorage = firebase.storage();
+} else {
+    console.warn("Tactical Mode: Operating on Local Mesh (Cloud Offline).");
+}
 
 // --- Identity & Profile Management ---
 // Persistent Node ID (remains same across refreshes)
@@ -347,15 +355,15 @@ function uploadVideoIntel(blob) {
     const filename = `intel_${myNodeId}_${timestamp}.webm`;
 
     // 1. SYNC TO CLOUD (Firebase Storage)
-    addLog(`[SYSTEM] Syncing Intel (${(blob.size / 1024).toFixed(1)} KB) to Cloud Storage...`, "alert");
-    const storageRef = cloudStorage.ref().child(`intel/${filename}`);
-
-    storageRef.put(blob).then((snapshot) => {
-        addLog("[SUCCESS] Intel securely stored in Cloud Archives.", "node");
-    }).catch((err) => {
-        addLog("[ERROR] Cloud intel storage unreachable.", "system");
-        console.error("Storage upload failed:", err);
-    });
+    if (typeof firebase !== 'undefined' && window.cloudStorage) {
+        addLog(`[SYSTEM] Syncing Intel (${(blob.size / 1024).toFixed(1)} KB) to Cloud Storage...`, "alert");
+        const storageRef = cloudStorage.ref().child(`intel/${filename}`);
+        storageRef.put(blob).then((snapshot) => {
+            addLog("[SUCCESS] Intel securely stored in Cloud Archives.", "node");
+        }).catch((err) => {
+            addLog("[ERROR] Cloud platform unreachable.", "system");
+        });
+    }
 
     // 2. SYNC TO LOCAL LAPTOP (Dual-Path Mesh Relay)
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
@@ -363,13 +371,18 @@ function uploadVideoIntel(blob) {
 
     [localHost, tunnelHost].forEach(host => {
         if (!host) return;
+        addLog(`[SYSTEM] Mirroring Intel to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}...`, "node");
+        
         fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
             method: 'POST',
             body: blob
         })
         .then(res => res.json())
-        .then(data => addLog(`[SUCCESS] Intel mirrored to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}`, "node"))
-        .catch(err => console.warn(`Local sync failed for ${host}:`, err));
+        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
+        .catch(err => {
+             console.warn(`Local sync failed for ${host}:`, err);
+             // Silent fail for secondary paths
+        });
     });
 }
 
@@ -386,24 +399,24 @@ function sendSOSPayload(lat, lng) {
     addLog("Initiating cloud broadcast payload...", "alert");
 
     // Broadcast to Cloud DB (Firestore) for Authority Access
-    cloudDB.collection("sos_logs").add({
-        sender: myNodeId,
-        profile: broadcastProfile,
-        lat: lat,
-        lng: lng,
-        scenario: currentScenario,
-        timestamp: new Date().toISOString(),
-        readable_date: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
-        readable_time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        type: "EMERGENCY_DISTRESS",
-        status: "ACTIVE"
-    }).then(() => {
-        addLog("Securely mirrored telemetry to Cloud Authority DB", "node");
-    }).catch((err) => {
-        // Fallback or warning if cloud fails
-        addLog("Cloud Mirroring Offline. Relying on local mesh.", "system");
-        console.error(err);
-    });
+    if (typeof firebase !== 'undefined' && window.cloudDB) {
+        cloudDB.collection("sos_logs").add({
+            sender: myNodeId,
+            profile: broadcastProfile,
+            lat: lat,
+            lng: lng,
+            scenario: currentScenario,
+            timestamp: new Date().toISOString(),
+            readable_date: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
+            readable_time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            type: "EMERGENCY_DISTRESS",
+            status: "ACTIVE"
+        }).then(() => {
+            addLog("Telemetry mirrored to Cloud Authority DB", "node");
+        }).catch((err) => {
+            addLog("Cloud Record Offline.", "system");
+        });
+    }
 
     // Reset after 8 seconds
     setTimeout(() => {
@@ -436,8 +449,11 @@ if (bleScanBtn) {
             addLog(`Bluetooth Device Found: [${deviceName}]`, "node");
 
             // Manually inject the hardware node into the counter
-            const currentNodes = parseInt(document.getElementById('node-count').innerText);
-            document.getElementById('node-count').innerText = currentNodes + 1;
+            const countLabel = document.getElementById('node-count');
+            const currentNodes = parseInt(countLabel.innerText);
+            countLabel.innerText = currentNodes + 1;
+            countLabel.style.color = "#00f0ff"; // Glow cyan for P2P nodes
+            countLabel.style.textShadow = "0 0 10px #00f0ff";
 
             // Listen for if the device walks out of range
             device.addEventListener('gattserverdisconnected', () => {
@@ -492,14 +508,15 @@ let activeMarker = null;
 
 // --- Register this device as a live node ---
 function registerNode() {
-    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() })
-        .then(() => {
-            // Heartbeat successful
-        })
-        .catch((err) => {
-            addLog(`Identity Sync Failed: ${err.message}`, "system");
-            console.error("Firebase Heartbeat Error:", err);
-        });
+    if (typeof firebase !== 'undefined' && window.cloudDB) {
+        cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() })
+            .then(() => {
+                // Heartbeat successful
+            })
+            .catch((err) => {
+                addLog(`Cloud Sync Offline: ${err.message}`, "system");
+            });
+    }
 }
 registerNode();
 addLog("Connected to cloud tactical network.", "system");
@@ -512,18 +529,36 @@ window.addEventListener('beforeunload', () => {
 // --- Node Heartbeat (5 sec) ---
 let lastCount = 1;
 setInterval(() => {
-    registerNode(); // Heartbeat
+    registerNode(); // Attempt Cloud Heartbeat
 
-    // Read only active nodes within last 2 minutes
-    cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 120000).get().then(snap => {
-        const currentCount = snap.size;
-        if (currentCount !== lastCount) {
-            if (currentCount > lastCount) addLog("Someone nearby joined the network.", "node");
-            else addLog("A device left the network.", "system");
-            lastCount = currentCount;
-        }
-        nodeCountLabel.innerText = currentCount;
-    }).catch(() => { });
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+
+    // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
+    [localHost, tunnelHost].forEach(host => {
+        if (!host) return;
+        fetch(`${host}/node_count?node_id=${myNodeId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.count && data.count !== lastCount) {
+                    nodeCountLabel.innerText = data.count;
+                    lastCount = data.count;
+                    addLog(`${host.includes('trycloudflare') ? 'Tunnel' : 'Local'} Mesh update: ${data.count} nodes detected.`, "node");
+                }
+            }).catch(() => { });
+    });
+
+    // 2. CLOUD-PATH: Sync with Firebase (works online)
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+        cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
+            const currentCount = snap.size;
+            if (currentCount > lastCount) {
+                nodeCountLabel.innerText = currentCount;
+                lastCount = currentCount;
+                addLog(`Cloud Network update: ${currentCount} nodes detected.`, "node");
+            }
+        }).catch(() => { });
+    }
 }, 5000);
 
 // --- Poll for SOS alerts every 2 seconds ---
@@ -535,8 +570,9 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
-
-    // 2. DISCARD IF ALERT IS TOO OLD (Over 20 seconds old based on server receipt)
+    
+    // UI POPUP (moved up)
+    incomingOverlay.classList.remove('hidden');
     const now = Date.now() / 1000;
     if (now - data.received_at > 20) {
         return;
@@ -647,3 +683,4 @@ ackBtn.addEventListener('click', () => {
     document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
 });
+
