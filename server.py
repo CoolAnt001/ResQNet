@@ -20,8 +20,8 @@ TIMEOUT_SECONDS = 120  # 2 minutes
 class MeshHandler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        # Restore basic logging for debugging
-        print(f"[ACCESS] {self.path}", flush=True)
+        # Print every request to the terminal for tactical debugging
+        print(f"[TACTICAL LINK] {args[0]} {args[1]}", flush=True)
 
     def do_OPTIONS(self):
         self.send_response(200)
