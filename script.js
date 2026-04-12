@@ -1,12 +1,12 @@
-// --- Firebase Configuration ---
-// YOU MUST PASTE YOUR FIREBASE CREDENTIALS HERE
+// IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
+// THE CONFIG BELOW NOW PULLS FROM A GLOBAL 'ENV' OBJECT (defined in env.js)
 const firebaseConfig = {
-    apiKey: "AIzaSyAU5W6b0mHupYbw17CFywfo1yyXTV_P1V4",
-    authDomain: "crisis-sync-ai-b57a6.firebaseapp.com",
-    projectId: "crisis-sync-ai-b57a6",
-    storageBucket: "crisis-sync-ai-b57a6.firebasestorage.app",
-    messagingSenderId: "425282005905",
-    appId: "1:425282005905:web:a6a9722a7e802b7d8e4830"
+    apiKey: typeof ENV !== 'undefined' ? ENV.FIREBASE_API_KEY : "REDACTED",
+    authDomain: typeof ENV !== 'undefined' ? ENV.FIREBASE_AUTH_DOMAIN : "REDACTED",
+    projectId: typeof ENV !== 'undefined' ? ENV.FIREBASE_PROJECT_ID : "REDACTED",
+    storageBucket: typeof ENV !== 'undefined' ? ENV.FIREBASE_STORAGE_BUCKET : "REDACTED",
+    messagingSenderId: typeof ENV !== 'undefined' ? ENV.FIREBASE_MESSAGING_SENDER_ID : "REDACTED",
+    appId: typeof ENV !== 'undefined' ? ENV.FIREBASE_APP_ID : "REDACTED"
 };
 firebase.initializeApp(firebaseConfig);
 const cloudDB = firebase.firestore();
@@ -26,7 +26,7 @@ let userProfile = JSON.parse(localStorage.getItem('sosProfile')) || {
     contact: "Not Provided",
     blood: "UNKNOWN",
     notes: "None",
-    emergencyCall: "+91 7788849270"
+    emergencyCall: "112"
 };
 
 const settingsBtn = document.getElementById('settings-btn');
@@ -58,7 +58,7 @@ document.getElementById('prof-name').value = userProfile.name === "Unknown Opera
 document.getElementById('prof-contact').value = userProfile.contact === "Not Provided" ? "" : userProfile.contact;
 document.getElementById('prof-blood').value = userProfile.blood;
 document.getElementById('prof-notes').value = userProfile.notes === "None" ? "" : userProfile.notes;
-document.getElementById('prof-emergency-call').value = userProfile.emergencyCall || "+91 7788849270";
+document.getElementById('prof-emergency-call').value = userProfile.emergencyCall || "112";
 
 // UI toggles
 settingsBtn.addEventListener('click', openProfile);
@@ -72,7 +72,7 @@ saveProfileBtn.addEventListener('click', () => {
         contact: document.getElementById('prof-contact').value || "Not Provided",
         blood: document.getElementById('prof-blood').value || "UNKNOWN",
         notes: document.getElementById('prof-notes').value || "None",
-        emergencyCall: document.getElementById('prof-emergency-call').value || "+91 7788849270"
+        emergencyCall: document.getElementById('prof-emergency-call').value || "112"
     };
     localStorage.setItem('sosProfile', JSON.stringify(userProfile));
     closeProfile();
@@ -250,7 +250,7 @@ if (navigator.geolocation) {
 // Final Broadcast Action
 function triggerSOS() {
     if (!isLocked) return; // Tactical Safety: Cannot fire if latch is open
-    
+
     isDragging = false;
     swipeContainer.style.display = 'none';
     confirmedUI.classList.remove('hidden');
@@ -282,7 +282,7 @@ function triggerSOS() {
     // --- AUTO-CALL PROTOCOL ---
     // Launch dialer with priority target
     setTimeout(() => {
-        const targetNumber = userProfile.emergencyCall || "+91 7788849270";
+        const targetNumber = userProfile.emergencyCall || "112";
         addLog(`Initiating Auto-Call to ${targetNumber} via system dialer...`, "alert");
         window.location.href = `tel:${targetNumber}`;
     }, 1500); // 1.5s delay to ensure the mesh payload is sent first
@@ -343,9 +343,11 @@ function uploadVideoIntel(blob) {
         return;
     }
 
-    addLog(`[SYSTEM] Syncing Intel (${(blob.size / 1024).toFixed(1)} KB) to Cloud Storage...`, "alert");
     const timestamp = Date.now();
     const filename = `intel_${myNodeId}_${timestamp}.webm`;
+
+    // 1. SYNC TO CLOUD (Firebase Storage)
+    addLog(`[SYSTEM] Syncing Intel (${(blob.size / 1024).toFixed(1)} KB) to Cloud Storage...`, "alert");
     const storageRef = cloudStorage.ref().child(`intel/${filename}`);
 
     storageRef.put(blob).then((snapshot) => {
@@ -353,6 +355,21 @@ function uploadVideoIntel(blob) {
     }).catch((err) => {
         addLog("[ERROR] Cloud intel storage unreachable.", "system");
         console.error("Storage upload failed:", err);
+    });
+
+    // 2. SYNC TO LOCAL LAPTOP (Dual-Path Mesh Relay)
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+
+    [localHost, tunnelHost].forEach(host => {
+        if (!host) return;
+        fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
+            method: 'POST',
+            body: blob
+        })
+        .then(res => res.json())
+        .then(data => addLog(`[SUCCESS] Intel mirrored to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}`, "node"))
+        .catch(err => console.warn(`Local sync failed for ${host}:`, err));
     });
 }
 
@@ -475,7 +492,7 @@ let activeMarker = null;
 
 // --- Register this device as a live node ---
 function registerNode() {
-    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() }).catch(()=>{});
+    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() }).catch(() => { });
 }
 registerNode();
 addLog("Connected to cloud tactical network.", "system");
@@ -489,7 +506,7 @@ window.addEventListener('beforeunload', () => {
 let lastCount = 1;
 setInterval(() => {
     registerNode(); // Heartbeat
-    
+
     // Read only active nodes within last 2 minutes
     cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 120000).get().then(snap => {
         const currentCount = snap.size;

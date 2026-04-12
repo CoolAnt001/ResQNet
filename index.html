@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ResQNet | Tactical Emergency Bridge</title>
+    <link rel="stylesheet" href="style.css?v=3">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Firebase Cloud DB SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
+</head>
+
+<body>
+    <div class="resqnet-container">
+
+        <!-- Top Status Bar -->
+        <header class="status-bar">
+            <div class="mesh-status" id="gps-status">AQUIRING GPS...</div>
+            <div id="rec-indicator">
+                <div class="pulse-dot"></div> REC INTEL
+            </div>
+            <div class="nodes-count"><span id="node-count">1</span> CONNECTED <span class="settings-trigger"
+                    id="settings-btn">⚙️</span></div>
+        </header>
+
+        <!-- Main Display -->
+        <main class="core-display">
+            <h1 class="logo-title">ResQNet</h1>
+            <p class="subtitle">Local Rescue Network</p>
+
+            <!-- Beacon Pulse UI -->
+            <div class="beacon-wrapper" id="beacon-container">
+                <div class="ring ring-1"></div>
+                <div class="ring ring-2"></div>
+                <div class="ring ring-3"></div>
+                <button class="panic-button" id="panic-button">
+                    <span class="button-icon">⚡</span>
+                </button>
+            </div>
+
+            <p class="instruction-text" id="instruction-text">HOLD TO UNLOCK SOS</p>
+
+            <!-- Emergency Scenario Selector (Hidden until armed) -->
+            <div class="scenario-selector hidden" id="scenario-selector">
+                <button class="scenario-btn active" data-scenario="GENERAL">GENERAL</button>
+                <button class="scenario-btn" data-scenario="MEDICAL">MEDICAL</button>
+                <button class="scenario-btn" data-scenario="FIRE">FIRE</button>
+                <button class="scenario-btn" data-scenario="HOSTILE">HOSTILE</button>
+            </div>
+        </main>
+
+        <!-- Network Log -->
+        <div class="network-panel">
+            <div class="network-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div><span class="radar-dot"></span> LIVE NETWORK ACTIVITY</div>
+                <button id="ble-scan-btn"
+                    style="background: rgba(0,240,255,0.1); color: #00f0ff; border: 1px solid #00f0ff; padding: 3px 8px; font-size: 0.6rem; font-weight: 800; border-radius: 4px; cursor: pointer; text-transform: uppercase;">SCAN
+                    BLUETOOTH</button>
+            </div>
+            <div class="log-container" id="network-log">
+                <div class="log-entry system">[SYSTEM] Connecting to local network...</div>
+            </div>
+        </div>
+
+        <!-- Antigravity Swipe / Slider -->
+        <footer class="action-footer">
+            <div class="swipe-container" id="swipe-container">
+                <div class="swipe-track">
+                    <div class="swipe-slider" id="swipe-slider">
+                        <span class="slider-arrow">»</span>
+                    </div>
+                    <span class="swipe-text">SWIPE TO BROADCAST SOS</span>
+                </div>
+            </div>
+
+            <!-- Confirmed State (Hidden by default) -->
+            <div class="broadcast-confirmed hidden" id="broadcast-confirmed">
+                <div class="success-icon">✓</div>
+                <h3>SIGNAL VERIFIED</h3>
+                <p>Mesh nodes routing distress signal.</p>
+            </div>
+        </footer>
+
+        <!-- INCOMING SOS OVERLAY (Hidden by default) -->
+        <div class="incoming-sos-overlay hidden" id="incoming-sos-overlay">
+            <h2 class="alert-title" id="incoming-title">DISTRESS SIGNAL DETECTED</h2>
+
+            <!-- Live Tactical Map -->
+            <div id="live-map-container"
+                style="width: 100%; max-width: 400px; height: 180px; border-radius: 8px; margin-bottom: 15px; border: 2px solid white; display: none; z-index: 1000;">
+            </div>
+
+            <p class="alert-details" id="incoming-details">NODE ID: UNKNOWN<br>LOC: AWAITING GPS FIX</p>
+            <button class="acknowledge-btn" id="acknowledge-btn">ACKNOWLEDGE & ROUTE</button>
+        </div>
+
+        <!-- Dark Backdrop for Profile Modal -->
+        <div class="profile-backdrop hidden" id="profile-backdrop"></div>
+
+        <!-- PROFILE / MEDICAL ID OVERLAY -->
+        <div class="profile-overlay hidden" id="profile-overlay">
+            <div class="profile-header">
+                <h2>MEDICAL ID / PROFILE</h2>
+                <button class="close-profile" id="close-profile-btn">✕</button>
+            </div>
+            <div class="profile-form">
+                <label>NAME</label>
+                <input type="text" id="prof-name" placeholder="E.g. Jane Doe">
+
+                <label>CONTACT NUMBER</label>
+                <input type="tel" id="prof-contact" placeholder="+91 98765 43210">
+
+                <label>BLOOD TYPE</label>
+                <select id="prof-blood">
+                    <option value="UNKNOWN">UNKNOWN</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                </select>
+
+                <label>CRITICAL MEDICAL NOTES</label>
+                <textarea id="prof-notes" placeholder="E.g. EpiPen in left pocket, allergic to penicillin."></textarea>
+
+                <label>AUTO-CALL ON SOS (TARGET NUMBER)</label>
+                <input type="tel" id="prof-emergency-call" placeholder="E.g. 112">
+
+                <button class="save-profile" id="save-profile-btn">STORE SECURE PROFILE</button>
+            </div>
+        </div>
+
+        <!-- Quick Toast Notification -->
+        <div class="toast-notification hidden" id="toast-notification">Profile Saved</div>
+
+    </div>
+
+    <link rel="manifest" href="manifest.json">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+    </script>
+    <script src="env.js"></script>`n    <script src="script.js?v=23"></script>
+</body>
+
+</html>
