@@ -12,17 +12,12 @@ const firebaseConfig = {
     messagingSenderId: typeof ENV !== 'undefined' ? ENV.FIREBASE_MESSAGING_SENDER_ID : "REDACTED",
     appId: typeof ENV !== 'undefined' ? ENV.FIREBASE_APP_ID : "REDACTED"
 };
-try {
-    if (typeof firebase !== 'undefined') {
-        firebase.initializeApp(firebaseConfig);
-        window.cloudDB = firebase.firestore();
-        window.cloudStorage = firebase.storage();
-        console.log("Tactical Sync: Cloud Platform Online.");
-    } else {
-        console.warn("Tactical Mode: Operating on Local Mesh (Cloud Offline).");
-    }
-} catch (e) {
-    console.error("Cloud Initialization Failed:", e);
+if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    window.cloudDB = firebase.firestore();
+    window.cloudStorage = firebase.storage();
+} else {
+    console.warn("Tactical Mode: Operating on Local Mesh (Cloud Offline).");
 }
 
 // --- Identity & Profile Management ---
@@ -31,13 +26,6 @@ let myNodeId = localStorage.getItem('myNodeId');
 if (!myNodeId) {
     myNodeId = "NK-" + Math.floor(Math.random() * 9000 + 1000);
     localStorage.setItem('myNodeId', myNodeId);
-}
-
-// 📍 CRITICAL: Force Location Permission Prompt Immediately
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(() => {}, () => {
-        alert("CRITICAL: Location access is required for ResQNet Tactical sync.");
-    });
 }
 
 // Load from persistence or use defaults
@@ -305,15 +293,6 @@ function triggerSOS() {
         const targetNumber = userProfile.emergencyCall || "112";
         addLog(`Initiating Auto-Call to ${targetNumber} via system dialer...`, "alert");
         window.location.href = `tel:${targetNumber}`;
-
-        // TACTICAL ATTEMPT: Trigger Android Personal Safety Sidecar (Experimental Deep Link)
-        if (/Android/i.test(navigator.userAgent)) {
-            setTimeout(() => {
-                addLog("Attempting to sync with System Safety Hub...", "node");
-                // This will fail silently if the app/intent is not found, which is safe.
-                window.location.href = "intent:#Intent;action=com.google.android.apps.safetyhub.ACTION_SOS;category=android.intent.category.DEFAULT;end";
-            }, 500);
-        }
     }, 1500); // 1.5s delay to ensure the mesh payload is sent first
 
     // --- Start Intelligence Capture Cycle ---
@@ -347,13 +326,8 @@ async function startIntelCycle() {
         recorder.onstop = () => {
             addLog("[SYSTEM] Processing capture...", "node");
             const blob = new Blob(chunks, { type: mimeType });
-            
-            // 1. UPLOAD TO CLOUD & LOCAL RELAY (Secure Storage)
             uploadVideoIntel(blob);
-            
-            // 2. UI UPDATE ONLY (Removed the Download trigger to keep device clean)
-            recIndicator.classList.remove('active'); 
-            addLog("[SUCCESS] Intel mirrored to secure tactical storage.", "node");
+            recIndicator.classList.remove('active'); // Hide RECPULSE
         };
 
         recorder.start();
@@ -398,17 +372,17 @@ function uploadVideoIntel(blob) {
     [localHost, tunnelHost].forEach(host => {
         if (!host) return;
         addLog(`[SYSTEM] Mirroring Intel to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}...`, "node");
-
+        
         fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
             method: 'POST',
             body: blob
         })
-            .then(res => res.json())
-            .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
-            .catch(err => {
-                console.warn(`Local sync failed for ${host}:`, err);
-                // Silent fail for secondary paths
-            });
+        .then(res => res.json())
+        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
+        .catch(err => {
+             console.warn(`Local sync failed for ${host}:`, err);
+             // Silent fail for secondary paths
+        });
     });
 }
 
@@ -555,37 +529,35 @@ window.addEventListener('beforeunload', () => {
 // --- Node Heartbeat (5 sec) ---
 let lastCount = 1;
 setInterval(() => {
-    try {
-        registerNode(); // Attempt Cloud Heartbeat
+    registerNode(); // Attempt Cloud Heartbeat
 
-        const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
-        const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
 
-        // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
-        [localHost, tunnelHost].forEach(host => {
-            if (!host) return;
-            fetch(`${host}/node_count?node_id=${myNodeId}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data && typeof data.count !== 'undefined') {
-                        nodeCountLabel.innerText = data.count;
-                        lastCount = data.count;
-                    }
-                }).catch(() => { /* Silent fail for offline relay */ });
-        });
-
-        // 2. CLOUD-PATH: Sync with Firebase (works online)
-        if (window.cloudDB) {
-            cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
-                const currentCount = snap.size;
-                if (currentCount > 0) {
-                    nodeCountLabel.innerText = currentCount;
-                    lastCount = currentCount;
+    // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
+    [localHost, tunnelHost].forEach(host => {
+        if (!host) return;
+        fetch(`${host}/node_count?node_id=${myNodeId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.count && data.count !== lastCount) {
+                    nodeCountLabel.innerText = data.count;
+                    lastCount = data.count;
+                    addLog(`${host.includes('trycloudflare') ? 'Tunnel' : 'Local'} Mesh update: ${data.count} nodes detected.`, "node");
                 }
             }).catch(() => { });
-        }
-    } catch (err) {
-        console.warn("Heartbeat interrupted:", err);
+    });
+
+    // 2. CLOUD-PATH: Sync with Firebase (works online)
+    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+        cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
+            const currentCount = snap.size;
+            if (currentCount > lastCount) {
+                nodeCountLabel.innerText = currentCount;
+                lastCount = currentCount;
+                addLog(`Cloud Network update: ${currentCount} nodes detected.`, "node");
+            }
+        }).catch(() => { });
     }
 }, 5000);
 
@@ -598,7 +570,7 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
-
+    
     // UI POPUP (moved up)
     incomingOverlay.classList.remove('hidden');
     const now = Date.now() / 1000;
