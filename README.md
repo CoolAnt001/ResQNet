@@ -1,6 +1,6 @@
-# 🛡️ Aegis Mesh: Tactical Emergency Bridge
+# 🛡️ ResQNet: Tactical Emergency Bridge
 
-**Aegis Mesh** is a decentralized emergency synchronization system designed for high-stakes rescue scenarios. It provides a robust, "serverless" tactical bridge that synchronizes GPS telemetry, medical profiles, and cyclic video evidence across a cloud-mirrored mesh network.
+**ResQNet** is a decentralized emergency synchronization system designed for high-stakes rescue scenarios. It provides a robust, "serverless" tactical bridge that synchronizes GPS telemetry, medical profiles, and cyclic video evidence across a cloud-mirrored mesh network.
 
 ## 🚀 Key Features
 - **Antigravity Swipe SOS**: A high-friction gesture trigger to prevent accidental broadcasts.
@@ -18,7 +18,7 @@
 ## 📡 Deployment
 This repository is optimized for **GitHub Pages**. To deploy:
 1. Enable GitHub Pages in the repository settings.
-2. The app will be live at `https://<username>.github.io/aegis-mesh/`.
+2. The app will be live at `https://coolant001.github.io/ResQNet/`.
 
 ---
 *Developed for tactical resilience and forensic durability.*
