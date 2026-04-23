@@ -592,13 +592,6 @@ function handleSOSData(data) {
     // TRACK SENDER FOR ACKNOWLEDGMENT
     currentAlertSender = data.sender;
 
-    // UI POPUP (moved up)
-    incomingOverlay.classList.remove('hidden');
-    const now = Date.now() / 1000;
-    if (now - data.received_at > 20) {
-        return;
-    }
-
     // 3. CREATE UNIQUE SIGNATURE (Sender + Original Timestamp)
     const alertSignature = `${data.sender}_${data.timestamp}`;
 
@@ -607,7 +600,8 @@ function handleSOSData(data) {
         return;
     }
 
-    // NEW VALID ALERT DETECTED
+    // NEW VALID ALERT DETECTED - OPEN UI NOW
+    incomingOverlay.style.display = 'block'; 
     incomingOverlay.classList.remove('hidden');
     processedAlerts.add(alertSignature);
     addLog(`INCOMING PRIORITY PACKET: [${data.scenario}] from ${data.sender}`, 'alert');
@@ -667,8 +661,7 @@ function handleSOSData(data) {
         </div>
         <div><span style="color:#ffb7b2">TIMECODE:</span> ${new Date(data.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} IST</div>
     `;
-    incomingOverlay.classList.remove('hidden');
-
+    
     if (activeMap) {
         setTimeout(() => {
             activeMap.invalidateSize();
@@ -715,14 +708,18 @@ ackBtn.addEventListener('click', () => {
     // 1. Mute the current sender directly
     if (currentAlertSender) {
         acknowledgedSenders.add(currentAlertSender);
-        // Automatically un-mute after 5 minutes (300,000ms)
         setTimeout(() => acknowledgedSenders.delete(currentAlertSender), 300000);
     }
 
+    // 2. FORCE HIDE THE UI
     incomingOverlay.classList.add('hidden');
+    incomingOverlay.style.display = 'none'; // Double-kill
+    
     document.getElementById('live-stream-container').style.display = 'none';
     document.getElementById('incoming-video').pause();
     document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
+    
+    addLog("Distress Acknowledged. Node muted for 5min.", "system");
 });
 
