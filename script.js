@@ -109,6 +109,7 @@ let unlockTimer;
 let isLocked = false;
 let currentScenario = "GENERAL";
 const acknowledgedSenders = new Set();
+let currentAlertSender = null;
 
 // Scenario Selector setup
 const scenarioSelector = document.getElementById('scenario-selector');
@@ -587,6 +588,9 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
+    
+    // TRACK SENDER FOR ACKNOWLEDGMENT
+    currentAlertSender = data.sender;
 
     // UI POPUP (moved up)
     incomingOverlay.classList.remove('hidden');
@@ -708,14 +712,11 @@ setInterval(() => {
 
 
 ackBtn.addEventListener('click', () => {
-    // 1. Extract the sender ID from the current details to "mute" them
-    const details = document.getElementById('incoming-details').innerText;
-    const senderMatch = details ? details.match(/ID:\s*(\S+)/) : null;
-    if (senderMatch && senderMatch[1]) {
-        const senderId = senderMatch[1];
-        acknowledgedSenders.add(senderId);
+    // 1. Mute the current sender directly
+    if (currentAlertSender) {
+        acknowledgedSenders.add(currentAlertSender);
         // Automatically un-mute after 5 minutes (300,000ms)
-        setTimeout(() => acknowledgedSenders.delete(senderId), 300000);
+        setTimeout(() => acknowledgedSenders.delete(currentAlertSender), 300000);
     }
 
     incomingOverlay.classList.add('hidden');
