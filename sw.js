@@ -1,9 +1,12 @@
-const CACHE_NAME = 'resqnet-v2';
+const CACHE_NAME = 'sos-mesh-v20';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
-  './script.js'
+  './script.js',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -14,17 +17,11 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// PASS-THROUGH strategy for live sync data
 self.addEventListener('fetch', (event) => {
-  // If it's a mesh/sync request, bypass cache entirely
-  if (event.request.url.includes('/node_count') || event.request.url.includes('/list_intel')) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
     })
   );
 });
+//CodeKraft
