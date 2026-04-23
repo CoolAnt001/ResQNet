@@ -108,6 +108,7 @@ let holdTimer;
 let unlockTimer;
 let isLocked = false;
 let currentScenario = "GENERAL";
+const acknowledgedSenders = new Set();
 
 // Scenario Selector setup
 const scenarioSelector = document.getElementById('scenario-selector');
@@ -365,23 +366,26 @@ function uploadVideoIntel(blob) {
         });
     }
 
-    // 2. SYNC TO LOCAL LAPTOP (Dual-Path Mesh Relay)
+    // 2. SYNC TO LOCAL LAPTOP (Dual-Path Mesh)
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
     const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+    
+    // 3. TACTICAL AUTO-DETECT: If we are on a trycloudflare link, use the current domain as the tunnel
+    const currentOrigin = window.location.origin;
+    const targets = new Set([localHost, tunnelHost, "http://localhost:8080", currentOrigin]);
 
-    [localHost, tunnelHost].forEach(host => {
-        if (!host) return;
-        addLog(`[SYSTEM] Mirroring Intel to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}...`, "node");
+    targets.forEach(host => {
+        if (!host || host === "null") return;
+        addLog(`[SYSTEM] Mirroring Intel to ${host.includes('trycloudflare') ? 'Tunnel' : 'Local Relay'}...`, "node");
         
         fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
             method: 'POST',
             body: blob
         })
         .then(res => res.json())
-        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
+        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('trycloudflare') ? 'TUNNEL' : 'RELAY'}]`, "node"))
         .catch(err => {
-             console.warn(`Local sync failed for ${host}:`, err);
-             // Silent fail for secondary paths
+             console.warn(`Upload failed for ${host}:`, err);
         });
     });
 }
@@ -395,10 +399,22 @@ function sendSOSPayload(lat, lng) {
         notes: userProfile.notes
     };
 
-    // Broadcast to Server (Mesh Relay)
-    addLog("Initiating cloud broadcast payload...", "alert");
+    // 1. Broadcast to Local Relay (Laptop)
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    fetch(`${localHost}/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            sender: myNodeId,
+            profile: broadcastProfile,
+            lat: lat,
+            lng: lng,
+            scenario: currentScenario,
+            timestamp: Date.now()
+        })
+    }).catch(err => console.warn("Local broadcast failed:", err));
 
-    // Broadcast to Cloud DB (Firestore) for Authority Access
+    // 2. Broadcast to Cloud DB (Firestore) for Authority Access
     if (typeof firebase !== 'undefined' && window.cloudDB) {
         cloudDB.collection("sos_logs").add({
             sender: myNodeId,
@@ -550,14 +566,15 @@ setInterval(() => {
 
     // 2. CLOUD-PATH: Sync with Firebase (works online)
     if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-        cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
-            const currentCount = snap.size;
-            if (currentCount > lastCount) {
-                nodeCountLabel.innerText = currentCount;
-                lastCount = currentCount;
-                addLog(`Cloud Network update: ${currentCount} nodes detected.`, "node");
-            }
-        }).catch(() => { });
+        cloudDB.collection("active_nodes")
+            .where("lastActive", ">", Date.now() - 60000) // 1 minute window for live accuracy
+            .get().then(snap => {
+                const currentCount = snap.size;
+                if (currentCount !== lastCount) {
+                    nodeCountLabel.innerText = currentCount > 0 ? currentCount : 1;
+                    lastCount = currentCount;
+                }
+            }).catch(() => { });
     }
 }, 5000);
 
@@ -570,7 +587,7 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
-    
+
     // UI POPUP (moved up)
     incomingOverlay.classList.remove('hidden');
     const now = Date.now() / 1000;
@@ -581,8 +598,8 @@ function handleSOSData(data) {
     // 3. CREATE UNIQUE SIGNATURE (Sender + Original Timestamp)
     const alertSignature = `${data.sender}_${data.timestamp}`;
 
-    // 4. DISCARD IF ALREADY PROCESSED
-    if (processedAlerts.has(alertSignature)) {
+    // 4. DISCARD IF ALREADY PROCESSED OR ACKNOWLEDGED
+    if (processedAlerts.has(alertSignature) || acknowledgedSenders.has(data.sender)) {
         return;
     }
 
@@ -676,7 +693,31 @@ cloudDB.collection('sos_logs')
         });
     });
 
+// --- LOCAL ALERT POLLING (2 sec) ---
+setInterval(() => {
+    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+    fetch(`${localHost}/poll_alerts`)
+        .then(res => res.json())
+        .then(alerts => {
+            if (Array.isArray(alerts)) {
+                alerts.forEach(alert => handleSOSData(alert));
+            }
+        }).catch(() => {});
+}, 2000);
+
+
+
 ackBtn.addEventListener('click', () => {
+    // 1. Extract the sender ID from the current details to "mute" them
+    const details = document.getElementById('incoming-details').innerText;
+    const senderMatch = details.match(/ID:\s*(\S+)/);
+    if (senderMatch) {
+        const senderId = senderMatch[1];
+        acknowledgedSenders.add(senderId);
+        // Automatically un-mute after 5 minutes (300,000ms)
+        setTimeout(() => acknowledgedSenders.delete(senderId), 300000);
+    }
+
     incomingOverlay.classList.add('hidden');
     document.getElementById('live-stream-container').style.display = 'none';
     document.getElementById('incoming-video').pause();
