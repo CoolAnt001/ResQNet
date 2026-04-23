@@ -12,12 +12,17 @@ const firebaseConfig = {
     messagingSenderId: typeof ENV !== 'undefined' ? ENV.FIREBASE_MESSAGING_SENDER_ID : "REDACTED",
     appId: typeof ENV !== 'undefined' ? ENV.FIREBASE_APP_ID : "REDACTED"
 };
-if (typeof firebase !== 'undefined') {
-    firebase.initializeApp(firebaseConfig);
-    window.cloudDB = firebase.firestore();
-    window.cloudStorage = firebase.storage();
-} else {
-    console.warn("Tactical Mode: Operating on Local Mesh (Cloud Offline).");
+try {
+    if (typeof firebase !== 'undefined') {
+        firebase.initializeApp(firebaseConfig);
+        window.cloudDB = firebase.firestore();
+        window.cloudStorage = firebase.storage();
+        console.log("Tactical Sync: Cloud Platform Online.");
+    } else {
+        console.warn("Tactical Mode: Operating on Local Mesh (Cloud Offline).");
+    }
+} catch (e) {
+    console.error("Cloud Initialization Failed:", e);
 }
 
 // --- Identity & Profile Management ---
@@ -550,35 +555,37 @@ window.addEventListener('beforeunload', () => {
 // --- Node Heartbeat (5 sec) ---
 let lastCount = 1;
 setInterval(() => {
-    registerNode(); // Attempt Cloud Heartbeat
+    try {
+        registerNode(); // Attempt Cloud Heartbeat
 
-    const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
-    const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+        const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
+        const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
 
-    // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
-    [localHost, tunnelHost].forEach(host => {
-        if (!host) return;
-        fetch(`${host}/node_count?node_id=${myNodeId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.count && data.count !== lastCount) {
-                    nodeCountLabel.innerText = data.count;
-                    lastCount = data.count;
-                    addLog(`${host.includes('trycloudflare') ? 'Tunnel' : 'Local'} Mesh update: ${data.count} nodes detected.`, "node");
+        // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
+        [localHost, tunnelHost].forEach(host => {
+            if (!host) return;
+            fetch(`${host}/node_count?node_id=${myNodeId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && typeof data.count !== 'undefined') {
+                        nodeCountLabel.innerText = data.count;
+                        lastCount = data.count;
+                    }
+                }).catch(() => { /* Silent fail for offline relay */ });
+        });
+
+        // 2. CLOUD-PATH: Sync with Firebase (works online)
+        if (window.cloudDB) {
+            cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
+                const currentCount = snap.size;
+                if (currentCount > 0) {
+                    nodeCountLabel.innerText = currentCount;
+                    lastCount = currentCount;
                 }
             }).catch(() => { });
-    });
-
-    // 2. CLOUD-PATH: Sync with Firebase (works online)
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-        cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 3600000).get().then(snap => {
-            const currentCount = snap.size;
-            if (currentCount > lastCount) {
-                nodeCountLabel.innerText = currentCount;
-                lastCount = currentCount;
-                addLog(`Cloud Network update: ${currentCount} nodes detected.`, "node");
-            }
-        }).catch(() => { });
+        }
+    } catch (err) {
+        console.warn("Heartbeat interrupted:", err);
     }
 }, 5000);
 
