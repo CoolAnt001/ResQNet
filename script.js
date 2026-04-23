@@ -370,7 +370,7 @@ function uploadVideoIntel(blob) {
     // 2. SYNC TO LOCAL LAPTOP (Dual-Path Mesh)
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
     const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
-    
+
     // 3. TACTICAL AUTO-DETECT: If we are on a trycloudflare link, use the current domain as the tunnel
     const currentOrigin = window.location.origin;
     const targets = new Set([localHost, tunnelHost, "http://localhost:8080", currentOrigin]);
@@ -378,16 +378,16 @@ function uploadVideoIntel(blob) {
     targets.forEach(host => {
         if (!host || host === "null") return;
         addLog(`[SYSTEM] Mirroring Intel to ${host.includes('trycloudflare') ? 'Tunnel' : 'Local Relay'}...`, "node");
-        
+
         fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
             method: 'POST',
             body: blob
         })
-        .then(res => res.json())
-        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('trycloudflare') ? 'TUNNEL' : 'RELAY'}]`, "node"))
-        .catch(err => {
-             console.warn(`Upload failed for ${host}:`, err);
-        });
+            .then(res => res.json())
+            .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('trycloudflare') ? 'TUNNEL' : 'RELAY'}]`, "node"))
+            .catch(err => {
+                console.warn(`Upload failed for ${host}:`, err);
+            });
     });
 }
 
@@ -588,7 +588,7 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
-    
+
     // TRACK SENDER FOR ACKNOWLEDGMENT
     currentAlertSender = data.sender;
 
@@ -601,7 +601,7 @@ function handleSOSData(data) {
     }
 
     // NEW VALID ALERT DETECTED - OPEN UI NOW
-    incomingOverlay.style.display = 'block'; 
+    incomingOverlay.style.display = 'block';
     incomingOverlay.classList.remove('hidden');
     processedAlerts.add(alertSignature);
     addLog(`INCOMING PRIORITY PACKET: [${data.scenario}] from ${data.sender}`, 'alert');
@@ -661,7 +661,7 @@ function handleSOSData(data) {
         </div>
         <div><span style="color:#ffb7b2">TIMECODE:</span> ${new Date(data.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} IST</div>
     `;
-    
+
     if (activeMap) {
         setTimeout(() => {
             activeMap.invalidateSize();
@@ -696,8 +696,10 @@ setInterval(() => {
     fetch(`${localHost}/poll_alerts`)
         .then(res => res.json())
         .then(alerts => {
-            if (Array.isArray(alerts)) {
-                alerts.forEach(alert => handleSOSData(alert));
+            if (Array.isArray(alerts) && alerts.length > 0) {
+                // Focus ONLY on the absolute latest alert in the history
+                const latestAlert = alerts[alerts.length - 1];
+                handleSOSData(latestAlert);
             }
         }).catch(() => {});
 }, 2000);
@@ -714,12 +716,12 @@ ackBtn.addEventListener('click', () => {
     // 2. FORCE HIDE THE UI
     incomingOverlay.classList.add('hidden');
     incomingOverlay.style.display = 'none'; // Double-kill
-    
+
     document.getElementById('live-stream-container').style.display = 'none';
     document.getElementById('incoming-video').pause();
     document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
-    
+
     addLog("Distress Acknowledged. Node muted for 5min.", "system");
 });
 
