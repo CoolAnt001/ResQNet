@@ -161,7 +161,15 @@
         }
     </script>
     <script src="env.js"></script>
-    <script src="script.js?v=23"></script>
+    <script>
+        // Nuclear Reset: Force unregister old service workers to clear cache lock
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) { registration.unregister(); }
+            });
+        }
+    </script>
+    <script src="script.js?v=99"></script>
 </body>
 
 </html>
