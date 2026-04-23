@@ -545,37 +545,39 @@ window.addEventListener('beforeunload', () => {
 
 // --- Node Heartbeat (5 sec) ---
 let lastCount = 1;
-setInterval(() => {
-    registerNode(); // Attempt Cloud Heartbeat
+setInterval(async () => {
+    registerNode(); // Heartbeat to Cloud
 
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
     const tunnelHost = typeof ENV !== 'undefined' ? ENV.TUNNEL_ENDPOINT : "";
+    let maxNodes = 1;
 
-    // 1. DUAL-PATH: Sync with Local Relay & Tunnel (works offline/remote)
-    [localHost, tunnelHost].forEach(host => {
-        if (!host) return;
-        fetch(`${host}/node_count?node_id=${myNodeId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.count && data.count !== lastCount) {
-                    nodeCountLabel.innerText = data.count;
-                    lastCount = data.count;
-                    addLog(`${host.includes('trycloudflare') ? 'Tunnel' : 'Local'} Mesh update: ${data.count} nodes detected.`, "node");
-                }
-            }).catch(() => { });
-    });
+    try {
+        // 1. Sync with Local Relay & Tunnel
+        const localResults = await Promise.all([localHost, tunnelHost].map(async host => {
+            if (!host) return 0;
+            try {
+                const res = await fetch(`${host}/node_count?node_id=${myNodeId}&t=${Date.now()}`);
+                const data = await res.json();
+                return data.count || 0;
+            } catch { return 0; }
+        }));
+        maxNodes = Math.max(maxNodes, ...localResults);
 
-    // 2. CLOUD-PATH: Sync with Firebase (works online)
-    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-        cloudDB.collection("active_nodes")
-            .where("lastActive", ">", Date.now() - 60000) // 1 minute window for live accuracy
-            .get().then(snap => {
-                const currentCount = snap.size;
-                if (currentCount !== lastCount) {
-                    nodeCountLabel.innerText = currentCount > 0 ? currentCount : 1;
-                    lastCount = currentCount;
-                }
-            }).catch(() => { });
+        // 2. Sync with Firebase Cloud
+        if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+            const snap = await cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 60000).get();
+            maxNodes = Math.max(maxNodes, snap.size);
+        }
+
+        // 3. Update UI only if count actually changed
+        if (maxNodes !== lastCount) {
+            nodeCountLabel.innerText = maxNodes;
+            lastCount = maxNodes;
+            addLog(`Mesh Network Synchronized: ${maxNodes} nodes active.`, "node");
+        }
+    } catch (err) {
+        console.warn("Heartbeat sync error:", err);
     }
 }, 5000);
 
@@ -589,11 +591,18 @@ function handleSOSData(data) {
         return;
     }
 
-    // TRACK SENDER FOR ACKNOWLEDGMENT
+    // 1. TRACK SENDER FOR ACKNOWLEDGMENT
     currentAlertSender = data.sender;
 
-    // 3. CREATE UNIQUE SIGNATURE (Sender + Original Timestamp)
-    const alertSignature = `${data.sender}_${data.timestamp}`;
+    // 2. FRESHNESS GUARD: Ignore any alert older than 600 seconds (10 mins)
+    // This allows alerts to persist through a reload while blocking very old data.
+    const now = Date.now() / 1000;
+    const alertTime = data.received_at || (new Date(data.timestamp).getTime() / 1000);
+    if (now - alertTime > 600) return;
+
+    // 3. CREATE UNIQUE SIGNATURE (Sender + Scenario + 10s Window)
+    const timeWindow = Math.floor(new Date(data.timestamp).getTime() / 10000); 
+    const alertSignature = `${data.sender}_${data.scenario}_${timeWindow}`;
 
     // 4. DISCARD IF ALREADY PROCESSED OR ACKNOWLEDGED
     if (processedAlerts.has(alertSignature) || acknowledgedSenders.has(data.sender)) {
@@ -606,25 +615,27 @@ function handleSOSData(data) {
     processedAlerts.add(alertSignature);
     addLog(`INCOMING PRIORITY PACKET: [${data.scenario}] from ${data.sender}`, 'alert');
 
-    // --- Intel Discovery (Local Relay) ---
+    /* 
+    // --- Intel Discovery (HIDDEN FOR PRIVACY) ---
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
-    fetch(`${localHost}/list_intel?node_id=${data.sender}`)
+    fetch(`${localHost}/list_intel?node_id=${data.sender}&t=${Date.now()}`)
         .then(res => res.json())
         .then(intel => {
             if (intel.files && intel.files.length > 0) {
                 const latestVideo = intel.files[0];
                 const videoElement = document.getElementById('incoming-video');
                 const videoContainer = document.getElementById('live-stream-container');
-                videoElement.src = `${localHost}/intel/${latestVideo}`;
+                videoElement.src = `${localHost}/intel/${latestVideo}?t=${Date.now()}`;
                 videoContainer.style.display = 'block';
-                addLog(`[SYSTEM] Video evidence found for ${data.sender}. Loading...`, "node");
+                addLog(`[SYSTEM] Live intel discovered for ${data.sender}.`, "node");
             } else {
                 document.getElementById('live-stream-container').style.display = 'none';
             }
-        }).catch(err => {
-            console.warn("Could not fetch intel from local relay:", err);
+        }).catch(() => {
             document.getElementById('live-stream-container').style.display = 'none';
         });
+    */
+    document.getElementById('live-stream-container').style.display = 'none';
 
     let locString = "NO GPS FIX";
     let mapLink = "#";
@@ -671,7 +682,23 @@ function handleSOSData(data) {
     if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
 }
 
-// Listen to SOS alerts (Cloud Realtime Sync)
+// --- CLOUD CRISIS HANDSHAKE (Join-Aware) ---
+// This ensures that anyone joining the mesh "late" is instantly alerted to any active crisis.
+const tenMinsAgo = new Date(Date.now() - 600000).toISOString();
+cloudDB.collection('sos_logs')
+    .where('timestamp', '>=', tenMinsAgo)
+    .orderBy('timestamp', 'desc')
+    .limit(1)
+    .get()
+    .then(snap => {
+        if (!snap.empty) {
+            const data = snap.docs[0].data();
+            data.received_at = Date.now() / 1000;
+            handleSOSData(data);
+        }
+    }).catch(() => {});
+
+// Listen to SOS alerts (Realtime Live Sync)
 const startupTime = new Date().toISOString();
 cloudDB.collection('sos_logs')
     .where('timestamp', '>=', startupTime)
@@ -693,11 +720,11 @@ cloudDB.collection('sos_logs')
 // --- LOCAL ALERT POLLING (2 sec) ---
 setInterval(() => {
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
-    fetch(`${localHost}/poll_alerts`)
+    // Add ?t= cache buster to force the browser to get fresh data from the laptop
+    fetch(`${localHost}/poll_alerts?t=${Date.now()}`)
         .then(res => res.json())
         .then(alerts => {
             if (Array.isArray(alerts) && alerts.length > 0) {
-                // Focus ONLY on the absolute latest alert in the history
                 const latestAlert = alerts[alerts.length - 1];
                 handleSOSData(latestAlert);
             }
