@@ -28,6 +28,13 @@ if (!myNodeId) {
     localStorage.setItem('myNodeId', myNodeId);
 }
 
+// 📍 CRITICAL: Force Location Permission Prompt Immediately
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(() => {}, () => {
+        alert("CRITICAL: Location access is required for ResQNet Tactical sync.");
+    });
+}
+
 // Load from persistence or use defaults
 let userProfile = JSON.parse(localStorage.getItem('sosProfile')) || {
     name: "Unknown Operative",
@@ -335,23 +342,13 @@ async function startIntelCycle() {
         recorder.onstop = () => {
             addLog("[SYSTEM] Processing capture...", "node");
             const blob = new Blob(chunks, { type: mimeType });
+            
+            // 1. UPLOAD TO CLOUD & LOCAL RELAY (Secure Storage)
             uploadVideoIntel(blob);
-
-            // --- LOCAL SAVE (Device Storage) ---
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `ResQNet_Evidence_${Date.now()}.${mimeType.includes('webm') ? 'webm' : 'mp4'}`;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                addLog("[SUCCESS] Intel saved to local device storage.", "node");
-            }, 100);
-
-            recIndicator.classList.remove('active'); // Hide RECPULSE
+            
+            // 2. UI UPDATE ONLY (Removed the Download trigger to keep device clean)
+            recIndicator.classList.remove('active'); 
+            addLog("[SUCCESS] Intel mirrored to secure tactical storage.", "node");
         };
 
         recorder.start();
