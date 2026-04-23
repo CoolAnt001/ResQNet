@@ -293,6 +293,15 @@ function triggerSOS() {
         const targetNumber = userProfile.emergencyCall || "112";
         addLog(`Initiating Auto-Call to ${targetNumber} via system dialer...`, "alert");
         window.location.href = `tel:${targetNumber}`;
+
+        // TACTICAL ATTEMPT: Trigger Android Personal Safety Sidecar (Experimental Deep Link)
+        if (/Android/i.test(navigator.userAgent)) {
+            setTimeout(() => {
+                addLog("Attempting to sync with System Safety Hub...", "node");
+                // This will fail silently if the app/intent is not found, which is safe.
+                window.location.href = "intent:#Intent;action=com.google.android.apps.safetyhub.ACTION_SOS;category=android.intent.category.DEFAULT;end";
+            }, 500);
+        }
     }, 1500); // 1.5s delay to ensure the mesh payload is sent first
 
     // --- Start Intelligence Capture Cycle ---
@@ -327,6 +336,21 @@ async function startIntelCycle() {
             addLog("[SYSTEM] Processing capture...", "node");
             const blob = new Blob(chunks, { type: mimeType });
             uploadVideoIntel(blob);
+
+            // --- LOCAL SAVE (Device Storage) ---
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `ResQNet_Evidence_${Date.now()}.${mimeType.includes('webm') ? 'webm' : 'mp4'}`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                addLog("[SUCCESS] Intel saved to local device storage.", "node");
+            }, 100);
+
             recIndicator.classList.remove('active'); // Hide RECPULSE
         };
 
@@ -372,17 +396,17 @@ function uploadVideoIntel(blob) {
     [localHost, tunnelHost].forEach(host => {
         if (!host) return;
         addLog(`[SYSTEM] Mirroring Intel to ${host.includes('10.') ? 'Local Relay' : 'Tunnel'}...`, "node");
-        
+
         fetch(`${host}/upload_intel?node_id=${myNodeId}`, {
             method: 'POST',
             body: blob
         })
-        .then(res => res.json())
-        .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
-        .catch(err => {
-             console.warn(`Local sync failed for ${host}:`, err);
-             // Silent fail for secondary paths
-        });
+            .then(res => res.json())
+            .then(data => addLog(`[SUCCESS] Mirror complete [${host.includes('10.') ? 'RELAY' : 'TUNNEL'}]`, "node"))
+            .catch(err => {
+                console.warn(`Local sync failed for ${host}:`, err);
+                // Silent fail for secondary paths
+            });
     });
 }
 
@@ -570,7 +594,7 @@ function handleSOSData(data) {
     if (data.sender === myNodeId) {
         return;
     }
-    
+
     // UI POPUP (moved up)
     incomingOverlay.classList.remove('hidden');
     const now = Date.now() / 1000;

@@ -409,6 +409,17 @@ body {
     }
 }
 
+/* HIGH-INTENSITY PANIC STROBE */
+.panic-strobe {
+    animation: strobe-background 0.2s infinite;
+}
+
+@keyframes strobe-background {
+    0% { background-color: var(--true-black); }
+    50% { background-color: #3a0000; }
+    100% { background-color: var(--true-black); }
+}
+
 @keyframes slide-up {
     from {
         transform: translateY(20px);
@@ -819,4 +830,4 @@ body {
     display: block;
 }
 
-/*codekraft */ 
+/*codekraft*/
