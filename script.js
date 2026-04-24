@@ -737,7 +737,7 @@ ackBtn.addEventListener('click', () => {
     // 1. Mute the current sender directly
     if (currentAlertSender) {
         acknowledgedSenders.add(currentAlertSender);
-        setTimeout(() => acknowledgedSenders.delete(currentAlertSender), 300000);
+        setTimeout(() => acknowledgedSenders.delete(currentAlertSender), 120000);
     }
 
     // 2. FORCE HIDE THE UI
@@ -749,6 +749,6 @@ ackBtn.addEventListener('click', () => {
     document.getElementById('incoming-video').src = "";
     if (activeMap) { activeMap.remove(); activeMap = null; }
 
-    addLog("Distress Acknowledged. Node muted for 5min.", "system");
+    addLog("Distress Acknowledged. Node muted for 2min.", "system");
 });
 
