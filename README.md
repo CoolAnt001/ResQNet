@@ -12,7 +12,7 @@
 ## 🛠️ Technical Stack
 - **Frontend**: Vanilla HTML5, CSS3 (Tactical Dark Mode), Javascript (ES6)
 - **Database**: Firebase Firestore (Real-time SOS logs)
-- **Storage**: Firebase Cloud Storage (Video evidence)
+- **Storage**: Firebase Cloud Storage and the host pc (Video evidence)
 - **Networking**: P2P Local Polling + Web Bluetooth (Experimental)
 
 ## 📡 Deployment
