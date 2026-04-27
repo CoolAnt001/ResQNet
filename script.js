@@ -285,9 +285,13 @@ function triggerSOS() {
     }, 5000);
 
     // --- Session Handshake (Physical Lock) ---
-    cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() }).then(() => {
-        addLog("Identity Handshake Synchronized.", "system");
-    });
+    if (typeof cloudDB !== 'undefined' && cloudDB) {
+        cloudDB.collection("active_nodes").doc(myNodeId).set({ lastActive: Date.now() }).then(() => {
+            addLog("Identity Handshake Synchronized.", "system");
+        }).catch(e => console.warn("Cloud sync offline:", e));
+    } else {
+        addLog("Offline mode: Identity handshake bypassed.", "system");
+    }
 
     // --- AUTO-CALL PROTOCOL ---
     // Launch dialer with priority target
@@ -540,7 +544,9 @@ addLog("Connected to cloud tactical network.", "system");
 
 // Unregister cleanly when user leaves
 window.addEventListener('beforeunload', () => {
-    cloudDB.collection("active_nodes").doc(myNodeId).delete();
+    if (typeof cloudDB !== 'undefined' && cloudDB) {
+        cloudDB.collection("active_nodes").doc(myNodeId).delete().catch(() => {});
+    }
 });
 
 // --- Node Heartbeat (5 sec) ---
@@ -565,7 +571,7 @@ setInterval(async () => {
         maxNodes = Math.max(maxNodes, ...localResults);
 
         // 2. Sync with Firebase Cloud
-        if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+        if (typeof firebase !== 'undefined' && firebase.apps.length > 0 && typeof cloudDB !== 'undefined' && cloudDB) {
             const snap = await cloudDB.collection("active_nodes").where("lastActive", ">", Date.now() - 60000).get();
             maxNodes = Math.max(maxNodes, snap.size);
         }
@@ -601,7 +607,7 @@ function handleSOSData(data) {
     if (now - alertTime > 600) return;
 
     // 3. CREATE UNIQUE SIGNATURE (Sender + Scenario + 10s Window)
-    const timeWindow = Math.floor(new Date(data.timestamp).getTime() / 10000); 
+    const timeWindow = Math.floor(new Date(data.timestamp).getTime() / 10000);
     const alertSignature = `${data.sender}_${data.scenario}_${timeWindow}`;
 
     // 4. DISCARD IF ALREADY PROCESSED OR ACKNOWLEDGED
@@ -615,27 +621,37 @@ function handleSOSData(data) {
     processedAlerts.add(alertSignature);
     addLog(`INCOMING PRIORITY PACKET: [${data.scenario}] from ${data.sender}`, 'alert');
 
-    /* 
-    // --- Intel Discovery (HIDDEN FOR PRIVACY) ---
+    // --- Intel Discovery ---
     const localHost = typeof ENV !== 'undefined' ? ENV.LOCAL_ENDPOINT : "http://localhost:8080";
-    fetch(`${localHost}/list_intel?node_id=${data.sender}&t=${Date.now()}`)
-        .then(res => res.json())
-        .then(intel => {
-            if (intel.files && intel.files.length > 0) {
-                const latestVideo = intel.files[0];
-                const videoElement = document.getElementById('incoming-video');
-                const videoContainer = document.getElementById('live-stream-container');
-                videoElement.src = `${localHost}/intel/${latestVideo}?t=${Date.now()}`;
-                videoContainer.style.display = 'block';
-                addLog(`[SYSTEM] Live intel discovered for ${data.sender}.`, "node");
-            } else {
-                document.getElementById('live-stream-container').style.display = 'none';
-            }
-        }).catch(() => {
-            document.getElementById('live-stream-container').style.display = 'none';
-        });
-    */
-    document.getElementById('live-stream-container').style.display = 'none';
+    
+    if (window.intelPollInterval) clearInterval(window.intelPollInterval);
+    
+    const checkIntel = () => {
+        if (incomingOverlay.classList.contains('hidden') || incomingOverlay.style.display === 'none') {
+            clearInterval(window.intelPollInterval);
+            return;
+        }
+        fetch(`${localHost}/list_intel?node_id=${data.sender}&t=${Date.now()}`)
+            .then(res => res.json())
+            .then(intel => {
+                if (intel.files && intel.files.length > 0) {
+                    const latestVideo = intel.files[0];
+                    const videoElement = document.getElementById('incoming-video');
+                    const videoContainer = document.getElementById('live-stream-container');
+                    
+                    if (videoElement.dataset.currentVideo !== latestVideo) {
+                        videoElement.src = `${localHost}/intel/${latestVideo}`;
+                        videoElement.dataset.currentVideo = latestVideo;
+                        videoContainer.style.display = 'block';
+                        addLog(`[SYSTEM] Live intel discovered for ${data.sender}.`, "node");
+                        clearInterval(window.intelPollInterval); // Stop polling once found
+                    }
+                }
+            }).catch(() => {});
+    };
+    
+    checkIntel();
+    window.intelPollInterval = setInterval(checkIntel, 3000);
 
     let locString = "NO GPS FIX";
     let mapLink = "#";
@@ -685,37 +701,41 @@ function handleSOSData(data) {
 // --- CLOUD CRISIS HANDSHAKE (Join-Aware) ---
 // This ensures that anyone joining the mesh "late" is instantly alerted to any active crisis.
 const tenMinsAgo = new Date(Date.now() - 600000).toISOString();
-cloudDB.collection('sos_logs')
-    .where('timestamp', '>=', tenMinsAgo)
-    .orderBy('timestamp', 'desc')
-    .limit(1)
-    .get()
-    .then(snap => {
-        if (!snap.empty) {
-            const data = snap.docs[0].data();
-            data.received_at = Date.now() / 1000;
-            handleSOSData(data);
-        }
-    }).catch(() => {});
+if (typeof cloudDB !== 'undefined' && cloudDB) {
+    cloudDB.collection('sos_logs')
+        .where('timestamp', '>=', tenMinsAgo)
+        .orderBy('timestamp', 'desc')
+        .limit(1)
+        .get()
+        .then(snap => {
+            if (!snap.empty) {
+                const data = snap.docs[0].data();
+                data.received_at = Date.now() / 1000;
+                handleSOSData(data);
+            }
+        }).catch(() => { });
+}
 
 // Listen to SOS alerts (Realtime Live Sync)
 const startupTime = new Date().toISOString();
-cloudDB.collection('sos_logs')
-    .where('timestamp', '>=', startupTime)
-    .onSnapshot((snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === "added") {
-                const data = change.doc.data();
-                data.received_at = Date.now() / 1000;
-                handleSOSData(data);
+if (typeof cloudDB !== 'undefined' && cloudDB) {
+    cloudDB.collection('sos_logs')
+        .where('timestamp', '>=', startupTime)
+        .onSnapshot((snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                    const data = change.doc.data();
+                    data.received_at = Date.now() / 1000;
+                    handleSOSData(data);
 
-                // Cleanup ProcessedAlerts Set periodically
-                if (processedAlerts.size > 200) {
-                    processedAlerts.clear();
+                    // Cleanup ProcessedAlerts Set periodically
+                    if (processedAlerts.size > 200) {
+                        processedAlerts.clear();
+                    }
                 }
-            }
+            });
         });
-    });
+}
 
 // --- LOCAL ALERT POLLING (2 sec) ---
 setInterval(() => {
@@ -728,7 +748,7 @@ setInterval(() => {
                 const latestAlert = alerts[alerts.length - 1];
                 handleSOSData(latestAlert);
             }
-        }).catch(() => {});
+        }).catch(() => { });
 }, 2000);
 
 
