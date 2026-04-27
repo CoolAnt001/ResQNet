@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import os
+import uuid
 
 PORT = 8080
 INTEL_DIR = "intel"
@@ -73,11 +74,16 @@ class MeshHandler(http.server.SimpleHTTPRequestHandler):
                     if p.startswith('node_id='):
                         node_id = p.split('=')[1]
             
-            timestamp = int(time.time())
-            filename = os.path.join(INTEL_DIR, f"intel_{node_id}_{timestamp}.webm")
-            with open(filename, "wb") as f:
-                f.write(post_data)
-            self._json_response({'status': 'captured', 'path': filename})
+            timestamp = int(time.time() * 1000)
+            unique_id = uuid.uuid4().hex[:6]
+            filename = os.path.join(INTEL_DIR, f"intel_{node_id}_{timestamp}_{unique_id}.webm")
+            try:
+                with open(filename, "wb") as f:
+                    f.write(post_data)
+                self._json_response({'status': 'captured', 'path': filename})
+            except Exception as e:
+                print(f"[ERROR] Failed to save intel: {e}", flush=True)
+                self.send_error(500, "Internal Server Error")
 
     def do_GET(self):
         if self.path.startswith('/node_count'):
