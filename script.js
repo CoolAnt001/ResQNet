@@ -1,7 +1,7 @@
 window.onerror = function (msg, url, line) {
     alert("CRITICAL ERROR: " + msg + " (Line " + line + ")");
 };
-
+ 
 // IT IS RECOMMENDED TO USE A BUILD TOOL OR env.js FOR LOCAL DEV.
 // THE CONFIG BELOW NOW PULLS FROM A GLOBAL 'ENV' OBJECT (defined in env.js)
 const firebaseConfig = {
