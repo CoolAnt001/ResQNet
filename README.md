@@ -20,7 +20,7 @@
 ## 📡 Deployment
 This repository is optimized for **GitHub Pages**. To deploy:
 1. Enable GitHub Pages in the repository settings.
-2. The app will be live at `https://coolant001.github.io/ResQNet/`.
+2. The app will be live at https://coolant001.github.io/ResQNet/.
 
 ---
 *Developed for tactical resilience and forensic durability.*
