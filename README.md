@@ -1,3 +1,5 @@
+<img width="1750" height="797" alt="image" src="https://github.com/user-attachments/assets/328eb6f4-310d-4a79-bf90-d2af0210d2de" />
+
 # 🛡️ ResQNet: Tactical Emergency Bridge
 
 **ResQNet** is a decentralized emergency synchronization system designed for high-stakes rescue scenarios. It provides a robust, "serverless" tactical bridge that synchronizes GPS telemetry, medical profiles, and cyclic video evidence across a cloud-mirrored mesh network.
@@ -22,3 +24,4 @@ This repository is optimized for **GitHub Pages**. To deploy:
 
 ---
 *Developed for tactical resilience and forensic durability.*
+PPT: `https://docs.google.com/presentation/d/e/2PACX-1vQKL68iqdZvG7vy2THAIWxUCTU8ctKTlW5wGnd7v-7vgPT5P7NmhdO6jJbrEcL10AKTSajXZz7ZN2l7/pub?start=false&loop=false&delayms=3000&slide=id.p2`
